@@ -75,6 +75,8 @@ class StudyHistory(models.Model):
     # Study content
     english_text = models.TextField()
     korean_translation = models.TextField(blank=True)
+    target_language = models.CharField(max_length=10, default='ko')  # Language code
+    source_language = models.CharField(max_length=10, default='auto')  # Source language code
     
     # Usage info  
     tts_service_used = models.CharField(max_length=20, blank=True)

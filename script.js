@@ -14,6 +14,12 @@ const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 const historyList = document.getElementById('historyList');
 const loginBtn = document.getElementById('loginBtn');
 const settingsBtn = document.getElementById('settingsBtn');
+const swapBtn = document.getElementById('swapBtn');
+const translationTtsBtn = document.getElementById('translationTtsBtn');
+const inputIndicator = document.getElementById('inputIndicator');
+
+// Active text area tracking
+let activeTextArea = 'input'; // 'input' or 'translation'
 
 // Modal elements
 const loginModal = document.getElementById('loginModal');
@@ -23,8 +29,32 @@ const registerTab = document.getElementById('registerTab');
 const loginForm = document.getElementById('loginForm');
 const registerForm = document.getElementById('registerForm');
 
-// Django backend URL
-const API_BASE_URL = 'http://localhost:8002/api';
+// Django backend URL - dynamically use current host and determine API port
+const getCurrentHost = () => {
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1' ? 'localhost' : host;
+};
+
+const getApiPort = () => {
+    const currentPort = window.location.port;
+    // Map frontend ports to backend API ports
+    const portMapping = {
+        '8001': '8002',  // If frontend is on 8001, API is on 8002
+        '8000': '8002',  // If frontend is on 8000, API is on 8002
+        '3000': '8002',  // If frontend is on 3000, API is on 8002
+        '': '8002'       // Default case (no port specified)
+    };
+    
+    return portMapping[currentPort] || '8002'; // Default to 8002
+};
+
+const API_BASE_URL = `http://${getCurrentHost()}:${getApiPort()}/api`;
+
+// Debug logging
+console.log('🌐 Current location:', window.location.href);
+console.log('🔌 API Base URL:', API_BASE_URL);
+console.log('🏠 Host:', getCurrentHost());
+console.log('🚪 Port mapping:', window.location.port, '->', getApiPort());
 
 // User state
 let currentUser = null;
@@ -46,12 +76,23 @@ function base64ToBlob(base64Data, contentType = '') {
     return new Blob([byteArray], { type: contentType });
 }
 
-// TTS functionality with speed control
-async function playTTS(text, speed) {
+// TTS functionality with speed control - now supports both input and translation
+async function playTTS(text, speed, forceLanguage = null) {
+    // If no text provided, get from active text area
     if (!text) {
-        alert('Please enter English text!');
+        if (activeTextArea === 'input') {
+            text = englishText.value.trim();
+        } else if (activeTextArea === 'translation') {
+            text = translationText.textContent.trim();
+        }
+    }
+    
+    if (!text) {
+        alert('Please enter some text or select a text area with content!');
         return;
     }
+    
+    console.log(`🔊 Playing TTS for ${activeTextArea} text: "${text.substring(0, 50)}..."`);
     
     // Disable all TTS buttons
     fastTtsBtn.disabled = true;
@@ -63,22 +104,8 @@ async function playTTS(text, speed) {
     const speedIcons = { 'fast': '🚀', 'normal': '🔊', 'slow': '🐌' };
     speedBtns[speed].textContent = `${speedIcons[speed]} Playing...`;
     
-    try {
-        // Always try Django backend first (works for both authenticated and guest users)
-        let success = await tryDjangoTTS(text, speed);
-        
-        // Final fallback to browser TTS if Django backend fails
-        if (!success) {
-            fallbackToSynthesis();
-        }
-        
-    } catch (error) {
-        console.error('TTS error:', error);
-        fallbackToSynthesis();
-    }
-    
     // Django backend TTS for all users
-    async function tryDjangoTTS(text, speed) {
+    const tryDjangoTTS = async (text, speed) => {
         try {
             const headers = {
                 'Content-Type': 'application/json'
@@ -89,12 +116,25 @@ async function playTTS(text, speed) {
                 headers['Authorization'] = `Token ${authToken}`;
             }
             
+            // Determine language based on active text area
+            let sourceLanguage;
+            if (forceLanguage) {
+                sourceLanguage = forceLanguage;
+            } else if (activeTextArea === 'input') {
+                sourceLanguage = document.getElementById('sourceLanguage').value;
+            } else if (activeTextArea === 'translation') {
+                sourceLanguage = document.getElementById('targetLanguage').value;
+            } else {
+                sourceLanguage = 'auto';
+            }
+            
             const response = await fetch(`${API_BASE_URL}/text-to-speech/`, {
                 method: 'POST',
                 headers: headers,
                 body: JSON.stringify({
                     text: text,
                     speed: speed,
+                    source_language: sourceLanguage,
                     service: 'auto' // Let backend choose best service based on user preferences
                 })
             });
@@ -145,6 +185,20 @@ async function playTTS(text, speed) {
             console.error('TTS failed:', error);
         }
         return false;
+    };
+    
+    try {
+        // Always try Django backend first (works for both authenticated and guest users)
+        let success = await tryDjangoTTS(text, speed);
+        
+        // Final fallback to browser TTS if Django backend fails
+        if (!success) {
+            fallbackToSynthesis();
+        }
+        
+    } catch (error) {
+        console.error('TTS error:', error);
+        fallbackToSynthesis();
     }
     
     // Note: tryGoogleTTS function removed - all TTS now goes through Django backend
@@ -199,27 +253,77 @@ async function playTTS(text, speed) {
     }
 }
 
+// Active text area management
+function setActiveTextArea(area) {
+    activeTextArea = area;
+    
+    // Remove active class from all
+    englishText.classList.remove('active');
+    translationText.classList.remove('active');
+    document.querySelector('.input-container').classList.remove('active');
+    
+    // Add active class to current
+    if (area === 'input') {
+        englishText.classList.add('active');
+        document.querySelector('.input-container').classList.add('active');
+        inputIndicator.textContent = '📝 Input Text (Active)';
+    } else if (area === 'translation') {
+        translationText.classList.add('active');
+        inputIndicator.textContent = '🌐 Translation (Active)';
+    }
+    
+    console.log(`Active text area: ${area}`);
+}
+
+// Event listeners for text area activation
+englishText.addEventListener('focus', () => setActiveTextArea('input'));
+englishText.addEventListener('click', () => setActiveTextArea('input'));
+
+translationText.addEventListener('click', () => {
+    if (translationText.textContent.trim()) {
+        setActiveTextArea('translation');
+    }
+});
+
+translationText.addEventListener('focus', () => {
+    if (translationText.textContent.trim()) {
+        setActiveTextArea('translation');
+    }
+});
+
+// Initialize with input as active
+setActiveTextArea('input');
+
 // 불필요한 TTS 함수들 삭제됨 - Django 백엔드에서 모든 TTS 서비스 처리
 
 // Translation functionality (using Django backend with fallback)
 translateBtn.addEventListener('click', async () => {
     const text = englishText.value.trim();
+    const sourceLanguage = document.getElementById('sourceLanguage').value;
+    const targetLanguage = document.getElementById('targetLanguage').value;
+    
     if (!text) {
-        alert('Please enter English text!');
+        alert('Please enter text in any language!');
+        return;
+    }
+    
+    if (sourceLanguage === targetLanguage && sourceLanguage !== 'auto') {
+        alert('Source and target languages cannot be the same!');
         return;
     }
     
     translateBtn.disabled = true;
-    translateBtn.textContent = '🌐 Translating...';
+    const translateBtnText = translateBtn.querySelector('.btn-text');
+    translateBtnText.textContent = 'Translating...';
     
     try {
-        console.log('Starting translation for:', text);
+        console.log('Starting translation for:', text, 'from:', sourceLanguage, 'to:', targetLanguage);
         
         // Use Django backend (handles all services and fallbacks)
-        let translation = await translateWithDjango(text);
+        let translation = await translateWithDjango(text, targetLanguage, sourceLanguage);
         
-        // Final fallback to client-side dictionary
-        if (!translation) {
+        // Final fallback to client-side dictionary (only for Korean)
+        if (!translation && targetLanguage === 'ko') {
             console.log('Using smart translation fallback...');
             translation = getSmartTranslation(text);
         }
@@ -234,13 +338,13 @@ translateBtn.addEventListener('click', async () => {
     }
     
     translateBtn.disabled = false;
-    translateBtn.textContent = '🌐 Translate';
+    translateBtnText.textContent = 'Translate';
 });
 
 // 불필요한 번역 함수들 삭제됨 - Django 백엔드에서 모든 번역 서비스 처리
 
 // Django backend translation (supports guests)
-async function translateWithDjango(text) {
+async function translateWithDjango(text, targetLanguage = 'ko', sourceLanguage = 'auto') {
     try {
         const headers = {
             'Content-Type': 'application/json'
@@ -265,7 +369,9 @@ async function translateWithDjango(text) {
             headers: headers,
             body: JSON.stringify({
                 text: text,
-                service: preferredService
+                service: preferredService,
+                target_language: targetLanguage,
+                source_language: sourceLanguage
             })
         });
         
@@ -443,13 +549,17 @@ function getSmartTranslation(text) {
 // Save functionality
 saveBtn.addEventListener('click', async () => {
     const text = englishText.value.trim();
+    const sourceLanguage = document.getElementById('sourceLanguage').value;
+    const targetLanguage = document.getElementById('targetLanguage').value;
+    const translation = translationText.textContent || '';
+    
     if (!text) {
-        alert('Please enter English text!');
+        alert('Please enter text in any language!');
         return;
     }
     
     if (currentUser && authToken) {
-        // Save to Django backend for authenticated users (English text only)
+        // Save to Django backend for authenticated users
         try {
             const response = await fetch(`${API_BASE_URL}/study/save/`, {
                 method: 'POST',
@@ -459,7 +569,9 @@ saveBtn.addEventListener('click', async () => {
                 },
                 body: JSON.stringify({
                     text: text,
-                    translation: ''  // 번역 결과는 저장하지 않음
+                    translation: translation,
+                    target_language: targetLanguage,
+                    source_language: sourceLanguage
                 })
             });
             
@@ -480,8 +592,8 @@ saveBtn.addEventListener('click', async () => {
             alert('Error saving to server. Please try again.');
         }
     } else {
-        // Save locally for guests (English text only)
-        saveLocally(text, '');
+        // Save locally for guests
+        saveLocally(text, translation, targetLanguage, sourceLanguage);
     }
     
     // Clear inputs after save
@@ -499,7 +611,7 @@ function clearInputs() {
     translationText.textContent = '';
 }
 
-async function saveLocally(text, translation) {
+async function saveLocally(text, translation, targetLanguage = 'ko', sourceLanguage = 'auto') {
     console.log(`Saving locally - Guest user, Text: ${text.substring(0, 50)}...`);
     
     // For guest users only, save to localStorage
@@ -507,6 +619,8 @@ async function saveLocally(text, translation) {
         id: Date.now(),
         text: text,
         translation: translation,
+        target_language: targetLanguage,
+        source_language: sourceLanguage,
         date: new Date().toLocaleString('en-US')
     };
     
@@ -574,6 +688,18 @@ window.loadHistoryItemFromMemory = (id) => {
     if (item) {
         console.log('Found item:', item);
         englishText.value = item.english_text || item.text || '';
+        
+        // Set language dropdowns if available
+        const sourceLanguageSelect = document.getElementById('sourceLanguage');
+        const targetLanguageSelect = document.getElementById('targetLanguage');
+        
+        if (sourceLanguageSelect && item.source_language) {
+            sourceLanguageSelect.value = item.source_language;
+        }
+        
+        if (targetLanguageSelect && item.target_language) {
+            targetLanguageSelect.value = item.target_language;
+        }
         
         if (item.korean_translation || item.translation) {
             translationText.textContent = item.korean_translation || item.translation;
@@ -672,6 +798,9 @@ clearHistoryBtn.addEventListener('click', async () => {
 // Authentication functions
 async function login(username, password) {
     try {
+        console.log('🔐 Attempting login to:', `${API_BASE_URL}/auth/login/`);
+        console.log('📋 Login payload:', { username: username, password: '[REDACTED]' });
+        
         const response = await fetch(`${API_BASE_URL}/auth/login/`, {
             method: 'POST',
             headers: {
@@ -680,7 +809,11 @@ async function login(username, password) {
             body: JSON.stringify({ username, password })
         });
         
+        console.log('📡 Response status:', response.status, response.statusText);
+        console.log('📋 Response headers:', [...response.headers.entries()]);
+        
         const data = await response.json();
+        console.log('📄 Response data:', data);
         
         if (response.ok) {
             authToken = data.token;
@@ -705,8 +838,20 @@ async function login(username, password) {
             return { success: false, error: data.error || 'Login failed' };
         }
     } catch (error) {
-        console.error('Login error:', error);
-        return { success: false, error: 'Network error' };
+        console.error('❌ Login network error:', error);
+        console.error('🌐 Error type:', error.name);
+        console.error('📝 Error message:', error.message);
+        console.error('📍 Error stack:', error.stack);
+        
+        // More specific error message
+        let errorMessage = 'Network error';
+        if (error.name === 'TypeError' && error.message.includes('fetch')) {
+            errorMessage = `Cannot connect to server at ${API_BASE_URL}. Please check if the server is running.`;
+        } else if (error.name === 'AbortError') {
+            errorMessage = 'Request timed out. Please try again.';
+        }
+        
+        return { success: false, error: errorMessage };
     }
 }
 
@@ -1008,9 +1153,29 @@ function displayHistory(history) {
         historyList.innerHTML = '<p class="no-history">No study records saved.</p>';
         selectAllBtn.textContent = 'Select All';
     } else {
+        // Language code to flag/name mapping
+        const languageDisplay = {
+            'ko': '🇰🇷 Korean',
+            'ja': '🇯🇵 Japanese', 
+            'zh': '🇨🇳 Chinese',
+            'es': '🇪🇸 Spanish',
+            'fr': '🇫🇷 French',
+            'de': '🇩🇪 German',
+            'it': '🇮🇹 Italian',
+            'pt': '🇵🇹 Portuguese',
+            'ru': '🇷🇺 Russian',
+            'ar': '🇸🇦 Arabic',
+            'hi': '🇮🇳 Hindi',
+            'th': '🇹🇭 Thai',
+            'vi': '🇻🇳 Vietnamese'
+        };
+        
         historyList.innerHTML = history.map(item => {
             const text = item.english_text || item.text;
             const displayText = text.length > 50 ? text.substring(0, 50) + '...' : text;
+            const targetLang = item.target_language || 'ko';
+            const langDisplay = languageDisplay[targetLang] || targetLang;
+            
             return `
                 <div class="history-item">
                     <div class="history-checkbox">
@@ -1019,6 +1184,7 @@ function displayHistory(history) {
                     <div class="history-content" onclick="loadHistoryItemFromMemory('${item.id}')">
                         <div class="history-date">${new Date(item.created_at || item.date).toLocaleString()}</div>
                         <div class="history-text" title="${text.replace(/"/g, '&quot;')}">${displayText}</div>
+                        <div class="history-translation">→ ${langDisplay}</div>
                     </div>
                 </div>
             `;
@@ -1265,4 +1431,139 @@ function setVoiceSpeed(speed) {
             })
         }).catch(error => console.error('Error saving voice speed:', error));
     }
+}
+
+
+// Language detection function using Google Translate API
+async function detectLanguage(text) {
+    try {
+        // Use Google Translate's detection API
+        const encodedText = encodeURIComponent(text);
+        const response = await fetch(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodedText}`, {
+            method: 'GET'
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            // Google returns detected language in data[2]
+            if (data && data[2]) {
+                const detectedLang = data[2];
+                console.log('Detected language:', detectedLang);
+                return detectedLang;
+            }
+        }
+    } catch (error) {
+        console.error('Language detection failed:', error);
+    }
+    
+    return null;
+}
+
+// Language and content swap functionality
+if (swapBtn) {
+    swapBtn.addEventListener('click', async () => {
+        try {
+            const sourceLanguageSelect = document.getElementById('sourceLanguage');
+            const targetLanguageSelect = document.getElementById('targetLanguage');
+            
+            if (!sourceLanguageSelect || !targetLanguageSelect) {
+                console.error('Language selectors not found');
+                return;
+            }
+            
+            const inputText = englishText ? englishText.value.trim() : '';
+            const translationTextContent = translationText ? translationText.textContent.trim() : '';
+            
+            if (!inputText && !translationTextContent) {
+                alert('No content to swap. Please enter some text and translate it first.');
+                return;
+            }
+            
+            let sourceLanguageValue = sourceLanguageSelect.value;
+            
+            // If source is auto-detect and we have input text, try to detect the language
+            if (sourceLanguageValue === 'auto' && inputText) {
+                swapBtn.disabled = true;
+                swapBtn.querySelector('.btn-text').textContent = 'Detecting...';
+                
+                try {
+                    const detectedLang = await detectLanguage(inputText);
+                    if (detectedLang) {
+                        sourceLanguageValue = detectedLang;
+                        sourceLanguageSelect.value = detectedLang;
+                        console.log(`Auto-detected source language: ${detectedLang}`);
+                    } else {
+                        // If detection fails, default to English
+                        sourceLanguageValue = 'en';
+                        sourceLanguageSelect.value = 'en';
+                        console.log('Language detection failed, defaulting to English');
+                    }
+                } catch (error) {
+                    console.error('Language detection error:', error);
+                    sourceLanguageValue = 'en';
+                    sourceLanguageSelect.value = 'en';
+                }
+                
+                swapBtn.disabled = false;
+                swapBtn.querySelector('.btn-text').textContent = 'Swap';
+            }
+            
+            // Now perform the swap
+            const tempLang = sourceLanguageValue;
+            sourceLanguageSelect.value = targetLanguageSelect.value;
+            targetLanguageSelect.value = tempLang;
+            
+            // Swap content if both exist
+            if (inputText && translationTextContent) {
+                if (englishText) englishText.value = translationTextContent;
+                if (translationText) translationText.textContent = inputText;
+                // Keep translation result visible
+                if (translationResult) translationResult.style.display = 'block';
+            } else if (translationTextContent) {
+                // If only translation exists, move it to input
+                if (englishText) englishText.value = translationTextContent;
+                if (translationResult) translationResult.style.display = 'none';
+                if (translationText) translationText.textContent = '';
+            } else if (inputText) {
+                // If only input text exists, can't swap content but can swap languages
+                console.log('Only input text exists, swapped languages only');
+            }
+            
+            // Add visual feedback - use CSS animation instead of direct manipulation
+            swapBtn.classList.add('swap-animating');
+            setTimeout(() => {
+                swapBtn.classList.remove('swap-animating');
+            }, 300);
+            
+        } catch (error) {
+            console.error('Swap button error:', error);
+            alert('An error occurred while swapping. Please try again.');
+            
+            // Reset button state
+            if (swapBtn) {
+                swapBtn.disabled = false;
+                const btnText = swapBtn.querySelector('.btn-text');
+                if (btnText) btnText.textContent = 'Swap';
+            }
+        }
+    });
+} else {
+    console.warn('Swap button not found in DOM');
+}
+
+// Inline swap button functionality (same as main swap button)
+
+// Translation TTS button functionality
+if (translationTtsBtn) {
+    translationTtsBtn.addEventListener('click', () => {
+        const translationTextContent = translationText.textContent.trim();
+        if (translationTextContent) {
+            setActiveTextArea('translation');
+            playTTS(translationTextContent, 'normal');
+        } else {
+            alert('No translation available to play!');
+        }
+    });
+} else {
+    console.warn('Translation TTS button not found in DOM');
 }

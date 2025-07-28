@@ -198,6 +198,8 @@ def get_study_history(request):
                 'id': int(item.created_at.timestamp() * 1000),  # Convert to JS timestamp
                 'text': item.english_text,
                 'translation': item.korean_translation,
+                'target_language': item.target_language,
+                'source_language': getattr(item, 'source_language', 'auto'),  # Safe access for backward compatibility
                 'date': item.created_at.strftime('%m/%d/%Y, %I:%M:%S %p'),
                 'tts_service': item.tts_service_used,
                 'voice_speed': item.voice_speed_used,
@@ -226,6 +228,8 @@ def save_study_item(request):
         print(f"Parsed data: {data}")
         text = data.get('text', '')
         translation = data.get('translation', '')
+        target_language = data.get('target_language', 'ko')
+        source_language = data.get('source_language', 'auto')
         tts_service = data.get('tts_service', '')
         voice_speed = data.get('voice_speed', 'normal')
         
@@ -249,6 +253,8 @@ def save_study_item(request):
                 if existing_item:
                     # Update existing item
                     existing_item.korean_translation = translation
+                    existing_item.target_language = target_language
+                    existing_item.source_language = source_language
                     existing_item.tts_service_used = tts_service
                     existing_item.voice_speed_used = voice_speed
                     existing_item.accessed_count += 1
@@ -267,6 +273,8 @@ def save_study_item(request):
                         user=user,
                         english_text=text,
                         korean_translation=translation,
+                        target_language=target_language,
+                        source_language=source_language,
                         tts_service_used=tts_service,
                         voice_speed_used=voice_speed
                     )
@@ -393,11 +401,17 @@ def text_to_speech(request):
         text = data.get('text', '')
         speed = data.get('speed', 'normal')
         service = data.get('service', 'google')
+        source_language = data.get('source_language', 'auto')  # Get source language for TTS
         
         if not text:
             return JsonResponse({'error': 'Text is required'}, status=400)
         
-        print(f"TTS Request - Text: '{text}', Service: {service}, Speed: {speed}")
+        # Auto-detect language for TTS if not specified
+        if source_language == 'auto':
+            detected_lang = detect_text_language(text)
+            source_language = detected_lang or 'en'  # Default to English if detection fails
+        
+        print(f"TTS Request - Text: '{text}', Language: {source_language}, Service: {service}, Speed: {speed}")
         
         # Check if user is authenticated and has API keys
         user_id = request.headers.get('Authorization', '').replace('Token token_', '')
@@ -433,7 +447,7 @@ def text_to_speech(request):
                 # Use Google Cloud TTS API if available and requested
                 if profile.google_tts_api_key and (actual_service == 'google_cloud' or (actual_service == 'auto' and profile.google_tts_api_key and not profile.elevenlabs_api_key)):
                     try:
-                        audio_data = call_google_cloud_tts_api(text, profile.google_tts_api_key, speed)
+                        audio_data = call_google_cloud_tts_api(text, profile.google_tts_api_key, speed, source_language)
                         if audio_data:
                             return JsonResponse({
                                 'success': True,
@@ -462,7 +476,7 @@ def text_to_speech(request):
                 
                 # Fallback to Google TTS via Django proxy (to avoid CORS)
                 try:
-                    audio_data = call_google_tts_api(text, speed)
+                    audio_data = call_google_tts_api(text, speed, source_language)
                     if audio_data:
                         return JsonResponse({
                             'success': True,
@@ -518,11 +532,13 @@ def translate_text(request):
         data = json.loads(request.body)
         text = data.get('text', '')
         service = data.get('service', 'auto')  # auto, groq, google
+        target_language = data.get('target_language', 'ko')  # default to Korean
+        source_language = data.get('source_language', 'auto')  # default to auto-detect
         
         if not text:
             return JsonResponse({'error': 'Text is required'}, status=400)
         
-        print(f"Translation request - Text: '{text}', Service: {service}")
+        print(f"Translation request - Text: '{text}', From: {source_language}, To: {target_language}, Service: {service}")
         
         # Check if user is authenticated for premium services
         user_id = request.headers.get('Authorization', '').replace('Token token_', '')
@@ -543,7 +559,7 @@ def translate_text(request):
                 # Use Groq API if requested and available
                 if profile.groq_api_key and (actual_service == 'groq' or (actual_service == 'auto' and profile.groq_api_key)):
                     try:
-                        translation = call_groq_translation_api(text, profile.groq_api_key)
+                        translation = call_groq_translation_api(text, profile.groq_api_key, target_language, source_language)
                         if translation:
                             return JsonResponse({
                                 'success': True,
@@ -557,7 +573,7 @@ def translate_text(request):
                 # Use user's Google Translate API if requested and available
                 if profile.google_translate_api_key and (actual_service == 'google' or (actual_service == 'auto' and profile.google_translate_api_key)):
                     try:
-                        translation = call_official_google_translate_api(text, profile.google_translate_api_key)
+                        translation = call_official_google_translate_api(text, profile.google_translate_api_key, target_language, source_language)
                         if translation:
                             return JsonResponse({
                                 'success': True,
@@ -573,7 +589,7 @@ def translate_text(request):
         
         # Try Google Translate API (for guests or fallback)
         try:
-            translation = handle_google_translation(text)
+            translation = handle_google_translation(text, target_language, source_language)
             if translation:
                 return JsonResponse({
                     'success': True,
@@ -597,7 +613,7 @@ def translate_text(request):
         print(f"Translation error: {e}")
         return JsonResponse({'error': 'Translation failed'}, status=500)
 
-def handle_google_translation(text):
+def handle_google_translation(text, target_language='ko', source_language='auto'):
     """Use free Google Translate API (for guests or fallback)"""
     # Use free Google Translate API
     try:
@@ -605,7 +621,7 @@ def handle_google_translation(text):
         encoded_text = urllib.parse.quote(text)
         
         response = requests.get(
-            f'https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ko&dt=t&q={encoded_text}',
+            f'https://translate.googleapis.com/translate_a/single?client=gtx&sl={source_language}&tl={target_language}&dt=t&q={encoded_text}',
             timeout=10
         )
         
@@ -627,7 +643,7 @@ def handle_google_translation(text):
     
     return None
 
-def call_official_google_translate_api(text, api_key):
+def call_official_google_translate_api(text, api_key, target_language='ko', source_language='auto'):
     """Call official Google Translate API with user's API key"""
     try:
         if not api_key:
@@ -638,11 +654,11 @@ def call_official_google_translate_api(text, api_key):
         params = {
             'key': api_key,
             'q': text,
-            'source': 'en',
-            'target': 'ko'
+            'source': source_language if source_language != 'auto' else None,
+            'target': target_language
         }
         
-        print(f"Calling official Google Translate API with user key...")
+        print(f"Calling official Google Translate API with user key to translate to {target_language}...")
         
         response = requests.get(url, params=params, timeout=15)
         
@@ -879,17 +895,17 @@ def call_groq_tts_api(text, api_key, speed='normal'):
         print(f"Groq TTS API exception: {e}")
         return None
 
-def call_google_tts_api(text, speed='normal'):
+def call_google_tts_api(text, speed='normal', language='en'):
     """Call Google TTS API via proxy to avoid CORS issues"""
     try:
         import urllib.parse
         encoded_text = urllib.parse.quote(text)
         
-        # Use Google TTS API
+        # Use Google TTS API with specified language
         slow_param = "1" if speed == "slow" else "0"
-        url = f'https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl=en&client=tw-ob&slow={slow_param}'
+        url = f'https://translate.google.com/translate_tts?ie=UTF-8&q={encoded_text}&tl={language}&client=tw-ob&slow={slow_param}'
         
-        print(f"Calling Google TTS API via proxy - Speed: {speed}")
+        print(f"Calling Google TTS API via proxy - Language: {language}, Speed: {speed}")
         
         response = requests.get(url, timeout=15, headers={
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
@@ -908,7 +924,7 @@ def call_google_tts_api(text, speed='normal'):
         print(f"Google TTS proxy exception: {e}")
         return None
 
-def call_groq_translation_api(text, api_key):
+def call_groq_translation_api(text, api_key, target_language='ko', source_language='auto'):
     """Call Groq API for translation"""
     try:
         url = "https://api.groq.com/openai/v1/chat/completions"
@@ -918,19 +934,45 @@ def call_groq_translation_api(text, api_key):
             "Content-Type": "application/json"
         }
         
+        # Language code to full language name mapping
+        language_names = {
+            'ko': 'Korean',
+            'ja': 'Japanese', 
+            'zh': 'Chinese',
+            'es': 'Spanish',
+            'fr': 'French',
+            'de': 'German',
+            'it': 'Italian',
+            'pt': 'Portuguese',
+            'ru': 'Russian',
+            'ar': 'Arabic',
+            'hi': 'Hindi',
+            'th': 'Thai',
+            'vi': 'Vietnamese'
+        }
+        
+        target_lang_name = language_names.get(target_language, target_language)
+        source_lang_name = language_names.get(source_language, source_language) if source_language != 'auto' else 'auto-detected language'
+        
+        # Create prompt based on source language
+        if source_language == 'auto':
+            prompt = f"Translate this text to {target_lang_name}. Return only the {target_lang_name} translation without any additional text:\n\n{text}"
+        else:
+            prompt = f"Translate this {source_lang_name} text to {target_lang_name}. Return only the {target_lang_name} translation without any additional text:\n\n{text}"
+        
         data = {
             "model": "llama3-70b-8192",
             "messages": [
                 {
                     "role": "user",
-                    "content": f"Translate this English text to Korean. Return only the Korean translation without any additional text:\n\n{text}"
+                    "content": prompt
                 }
             ],
             "max_tokens": 1000,
             "temperature": 0.1
         }
         
-        print(f"Calling Groq translation API...")
+        print(f"Calling Groq translation API to translate to {target_lang_name}...")
         
         response = requests.post(url, json=data, headers=headers, timeout=30)
         
@@ -947,7 +989,7 @@ def call_groq_translation_api(text, api_key):
         print(f"Groq translation API exception: {e}")
         return None
 
-def call_google_cloud_tts_api(text, api_key, speed='normal'):
+def call_google_cloud_tts_api(text, api_key, speed='normal', language='en'):
     """Call Google Cloud Text-to-Speech API"""
     try:
         if not api_key:
@@ -967,14 +1009,42 @@ def call_google_cloud_tts_api(text, api_key, speed='normal'):
             "Content-Type": "application/json"
         }
         
+        # Language code mapping for Google Cloud TTS
+        tts_lang_mapping = {
+            'ko': 'ko-KR',
+            'ja': 'ja-JP', 
+            'zh': 'zh-CN',
+            'es': 'es-ES',
+            'fr': 'fr-FR',
+            'de': 'de-DE',
+            'it': 'it-IT',
+            'pt': 'pt-PT',
+            'ru': 'ru-RU',
+            'ar': 'ar-XA',
+            'hi': 'hi-IN',
+            'th': 'th-TH',
+            'vi': 'vi-VN'
+        }
+        
+        language_code = tts_lang_mapping.get(language, 'en-US')
+        
+        # Select appropriate voice based on language
+        voice_name = f"{language_code}-Standard-A"  # Default voice
+        if language_code == 'en-US':
+            voice_name = "en-US-Neural2-D"
+        elif language_code == 'ko-KR':
+            voice_name = "ko-KR-Neural2-A"
+        elif language_code == 'ja-JP':
+            voice_name = "ja-JP-Neural2-B"
+        
         data = {
             "input": {
                 "text": text
             },
             "voice": {
-                "languageCode": "en-US",
-                "name": "en-US-Neural2-D",  # High quality neural voice (male)
-                "ssmlGender": "MALE"        # Corrected gender
+                "languageCode": language_code,
+                "name": voice_name,
+                "ssmlGender": "MALE"
             },
             "audioConfig": {
                 "audioEncoding": "MP3",
@@ -984,7 +1054,7 @@ def call_google_cloud_tts_api(text, api_key, speed='normal'):
             }
         }
         
-        print(f"Calling Google Cloud TTS API with rate: {speaking_rate}")
+        print(f"Calling Google Cloud TTS API - Language: {language_code}, Voice: {voice_name}, Rate: {speaking_rate}")
         
         response = requests.post(url, json=data, headers=headers, timeout=30)
         
@@ -1001,3 +1071,27 @@ def call_google_cloud_tts_api(text, api_key, speed='normal'):
     except Exception as e:
         print(f"Google Cloud TTS API exception: {e}")
         return None
+
+def detect_text_language(text):
+    """Detect language of text using Google Translate API"""
+    try:
+        import urllib.parse
+        encoded_text = urllib.parse.quote(text[:100])  # Limit text length for detection
+        
+        response = requests.get(
+            f'https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q={encoded_text}',
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            data = response.json()
+            # Google returns detected language in data[2]
+            if data and len(data) > 2 and data[2]:
+                detected_lang = data[2]
+                print(f"Detected language: {detected_lang}")
+                return detected_lang
+                
+    except Exception as e:
+        print(f"Language detection failed: {e}")
+    
+    return None
