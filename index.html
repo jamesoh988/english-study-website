@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>영어 공부 사이트</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🗣️</text></svg>">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Top Header -->
+    <div class="top-header">
+        <div class="header-content">
+            <div class="logo">🗣️ English Study</div>
+            <div class="user-section">
+                <button id="loginBtn" class="login-btn">Login</button>
+                <button id="settingsBtn" class="settings-btn" style="display: none;">⚙️ Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <!-- Left Sidebar for Study History -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h3>📚 Study History</h3>
+                <div class="sidebar-buttons">
+                    <button id="selectAllBtn" class="small-btn">Select All</button>
+                    <button id="clearHistoryBtn" class="small-btn danger">Delete</button>
+                </div>
+            </div>
+            <div id="historyList" class="history-list">
+                <p class="no-history">No study records saved.</p>
+            </div>
+        </div>
+
+        <!-- Main Content Area -->
+        <div class="content">
+            <div class="study-area">
+                <!-- Service Status Bar -->
+                <div class="service-status-bar">
+                    <div class="status-item">
+                        <span class="status-label">🌐 Active Translation:</span>
+                        <span id="currentTranslationService" class="status-value">Loading...</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">🔊 Active Voice:</span>
+                        <span id="currentTtsService" class="status-value">Loading...</span>
+                    </div>
+                </div>
+                
+                <div class="input-section">
+                    <textarea id="englishText" placeholder="Enter English text here..."></textarea>
+                    
+                    <!-- AI Voice Controls -->
+                    <div class="voice-controls">
+                        <label class="control-label">AI Voice:</label>
+                        <div class="voice-buttons">
+                            <button id="fastTtsBtn" class="voice-btn">
+                                <span class="btn-icon">🚀</span>
+                                <span class="btn-text">Fast</span>
+                                <span id="fastTtsStatus" class="btn-status"></span>
+                            </button>
+                            <button id="normalTtsBtn" class="voice-btn active">
+                                <span class="btn-icon">🔊</span>
+                                <span class="btn-text">Normal</span>
+                                <span id="normalTtsStatus" class="btn-status"></span>
+                            </button>
+                            <button id="slowTtsBtn" class="voice-btn">
+                                <span class="btn-icon">🐌</span>
+                                <span class="btn-text">Slow</span>
+                                <span id="slowTtsStatus" class="btn-status"></span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Main Action Buttons -->
+                    <div class="action-buttons">
+                        <button id="translateBtn" class="action-btn">
+                            <span class="btn-icon">🌐</span>
+                            <span class="btn-text">Translate</span>
+                            <span id="translateStatus" class="btn-status"></span>
+                        </button>
+                        <button id="saveBtn" class="action-btn">
+                            <span class="btn-icon">💾</span>
+                            <span class="btn-text">Save</span>
+                        </button>
+                        <button id="clearBtn" class="action-btn">
+                            <span class="btn-icon">🗑️</span>
+                            <span class="btn-text">Clear</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="result-section">
+                    <div id="translationResult" class="translation-box" style="display: none;">
+                        <h3>🌐 Translation:</h3>
+                        <p id="translationText"></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>Login / Register</h2>
+            
+            <div class="auth-tabs">
+                <button id="loginTab" class="tab-btn active">Login</button>
+                <button id="registerTab" class="tab-btn">Register</button>
+            </div>
+            
+            <form id="loginForm" class="auth-form">
+                <input type="text" id="loginUsername" placeholder="Username" required>
+                <input type="password" id="loginPassword" placeholder="Password" required>
+                <button type="submit" class="auth-btn">Login</button>
+            </form>
+            
+            <form id="registerForm" class="auth-form" style="display: none;">
+                <input type="text" id="registerUsername" placeholder="Username" required>
+                <input type="email" id="registerEmail" placeholder="Email" required>
+                <input type="password" id="registerPassword" placeholder="Password" required>
+                <button type="submit" class="auth-btn">Register</button>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Settings Modal -->
+    <div id="settingsModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h2>⚙️ Settings</h2>
+            
+            <div class="settings-section">
+                <h3>API Keys</h3>
+                <div class="input-group">
+                    <label>ElevenLabs API Key (TTS):</label>
+                    <input type="password" id="elevenLabsKey" placeholder="sk_...">
+                </div>
+                <div class="input-group">
+                    <label>Groq API Key (Translate):</label>
+                    <input type="password" id="groqKey" placeholder="gsk_...">
+                </div>
+                <div class="input-group">
+                    <label>Google Translate API Key (Translate):</label>
+                    <input type="password" id="googleTranslateKey" placeholder="AIza...">
+                </div>
+                <div class="input-group">
+                    <label>Google Cloud TTS API Key (Voice):</label>
+                    <input type="password" id="googleTtsKey" placeholder="AIza...">
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h3>Preferences</h3>
+                <div class="input-group">
+                    <label>Preferred TTS Service:</label>
+                    <select id="preferredTTS">
+                        <option value="google">Google TTS (Free)</option>
+                        <option value="google_cloud">Google Cloud TTS</option>
+                        <option value="elevenlabs">ElevenLabs AI</option>
+                        <option value="browser">Browser TTS</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Translation Service:</label>
+                    <select id="preferredTranslation">
+                        <option value="auto">Auto (Best Available)</option>
+                        <option value="groq">Groq AI</option>
+                        <option value="google">Google Translate</option>
+                        <option value="basic">Basic Dictionary</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label>Default Voice Speed:</label>
+                    <select id="preferredSpeed">
+                        <option value="fast">Fast</option>
+                        <option value="normal">Normal</option>
+                        <option value="slow">Slow</option>
+                    </select>
+                </div>
+            </div>
+            
+            <div class="settings-section">
+                <h3>Usage Statistics</h3>
+                <div class="stats">
+                    <p>Daily Usage: <span id="dailyUsage">0</span> characters</p>
+                    <p>Total Usage: <span id="totalUsage">0</span> characters</p>
+                </div>
+            </div>
+            
+            <button id="saveSettings" class="auth-btn">Save Settings</button>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="footer-content">
+            <p>&copy; 2024 English Study Site. All rights reserved.</p>
+            <p>Made with ❤️ for English learners</p>
+        </div>
+    </footer>
+    
+    <script src="script.js"></script>
+</body>
+</html>
