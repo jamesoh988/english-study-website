@@ -490,9 +490,7 @@ saveBtn.addEventListener('click', async () => {
 
 // Clear button functionality
 clearBtn.addEventListener('click', () => {
-    if (confirm('Clear text and translation?')) {
-        clearInputs();
-    }
+    clearInputs();
 });
 
 function clearInputs() {
@@ -852,7 +850,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     
     const result = await login(username, password);
     if (result.success) {
-        alert('Logged in successfully!');
+        showWelcomeMessage(username);
     } else {
         alert(result.error);
     }
@@ -1042,6 +1040,18 @@ function updateSelectAllButton() {
     } else {
         selectAllBtn.textContent = 'Select All';
     }
+}
+
+// Show welcome message after successful login
+function showWelcomeMessage(username) {
+    const welcomeMessage = document.getElementById('welcomeMessage');
+    welcomeMessage.textContent = `Welcome back, ${username}! 🎉`;
+    welcomeMessage.style.display = 'block';
+    
+    // Hide the message after 5 seconds
+    setTimeout(() => {
+        welcomeMessage.style.display = 'none';
+    }, 5000);
 }
 
 // Save settings button
