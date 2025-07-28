@@ -238,15 +238,45 @@ body {
     font-weight: bold;
 }
 
-.welcome-message {
-    font-size: 1.1em;
-    color: #2c3e50;
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 1.0em;
+    color: white;
     font-weight: 500;
     padding: 8px 16px;
-    background: linear-gradient(135deg, #e8f5e8, #f0f8f0);
+    background: rgba(255,255,255,0.1);
     border-radius: 20px;
-    border: 1px solid #4CAF50;
-    animation: slideIn 0.5s ease-out;
+    border: 1px solid rgba(255,255,255,0.3);
+}
+
+.user-greeting {
+    color: white;
+    font-weight: 600;
+}
+
+.user-info .settings-btn,
+.user-info .logout-btn {
+    background: rgba(255,255,255,0.2);
+    color: white;
+    border: 1px solid rgba(255,255,255,0.3);
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 0.85em;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.user-info .settings-btn:hover,
+.user-info .logout-btn:hover {
+    background: rgba(255,255,255,0.3);
+    transform: translateY(-1px);
+}
+
+.user-info .settings-btn {
+    padding: 6px 10px;
 }
 
 @keyframes slideIn {
@@ -543,9 +573,25 @@ body {
         font-size: 1.3em;
     }
     
-    .login-btn, .settings-btn {
+    .login-btn {
         font-size: 12px;
         padding: 8px 12px;
+    }
+    
+    .user-info {
+        gap: 8px;
+        padding: 6px 12px;
+        font-size: 0.9em;
+    }
+    
+    .user-info .settings-btn,
+    .user-info .logout-btn {
+        font-size: 0.8em;
+        padding: 5px 8px;
+    }
+    
+    .user-greeting {
+        font-size: 0.9em;
     }
     
     #englishText {

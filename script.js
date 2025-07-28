@@ -700,11 +700,6 @@ async function login(username, password) {
             updateUIForLoggedInUser();
             loadHistory(); // Load user's study history from database
             
-            // Refresh page after successful login
-            setTimeout(() => {
-                window.location.reload();
-            }, 1000);
-            
             return { success: true };
         } else {
             return { success: false, error: data.error || 'Login failed' };
@@ -759,8 +754,7 @@ function logout() {
 }
 
 function updateUIForLoggedInUser() {
-    loginBtn.textContent = currentUser.username;
-    document.getElementById('settingsBtn').style.display = 'inline-block';
+    showUserInfo(currentUser.username);
     closeModal(loginModal);
     loadStudyHistory();
     
@@ -769,8 +763,7 @@ function updateUIForLoggedInUser() {
 }
 
 function updateUIForLoggedOutUser() {
-    loginBtn.textContent = 'Login';
-    document.getElementById('settingsBtn').style.display = 'none';
+    hideUserInfo();
     loadHistory(); // Load local storage history
     
     // Update service status for guest user
@@ -850,7 +843,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
     
     const result = await login(username, password);
     if (result.success) {
-        showWelcomeMessage(username);
+        showUserInfo(username);
     } else {
         alert(result.error);
     }
@@ -864,8 +857,14 @@ document.getElementById('registerForm').addEventListener('submit', async (e) => 
     
     const result = await register(username, email, password);
     if (result.success) {
-        alert('Registration successful! Please login.');
-        switchAuthTab('login');
+        // Auto-login after successful registration
+        const loginResult = await login(username, password);
+        if (loginResult.success) {
+            showUserInfo(username);
+        } else {
+            alert('Registration successful! Please login.');
+            switchAuthTab('login');
+        }
     } else {
         alert(result.error);
     }
@@ -1042,20 +1041,52 @@ function updateSelectAllButton() {
     }
 }
 
-// Show welcome message after successful login
-function showWelcomeMessage(username) {
-    const welcomeMessage = document.getElementById('welcomeMessage');
-    welcomeMessage.textContent = `Welcome back, ${username}! 🎉`;
-    welcomeMessage.style.display = 'block';
+// Show persistent user info after successful login
+function showUserInfo(username) {
+    const userInfo = document.getElementById('userInfo');
+    const userGreeting = document.getElementById('userGreeting');
+    const guestSection = document.getElementById('guestSection');
     
-    // Hide the message after 5 seconds
-    setTimeout(() => {
-        welcomeMessage.style.display = 'none';
-    }, 5000);
+    userGreeting.textContent = `Welcome, ${username}! 👋`;
+    
+    // Show user info and hide guest section
+    userInfo.style.display = 'flex';
+    guestSection.style.display = 'none';
+}
+
+// Hide user info when logged out
+function hideUserInfo() {
+    const userInfo = document.getElementById('userInfo');
+    const guestSection = document.getElementById('guestSection');
+    
+    userInfo.style.display = 'none';
+    guestSection.style.display = 'block';
 }
 
 // Save settings button
 document.getElementById('saveSettings').addEventListener('click', saveUserSettings);
+
+// Logout button functionality
+document.getElementById('logoutBtn').addEventListener('click', () => {
+    // Clear user data
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('currentUser');
+    currentUser = null;
+    authToken = null;
+    
+    // Hide user info and show guest interface
+    hideUserInfo();
+    
+    // Clear history display
+    displayHistory([]);
+    
+    // Hide settings modal if open
+    const settingsModal = document.getElementById('settingsModal');
+    settingsModal.style.display = 'none';
+    
+    // Clear any input
+    clearInputs();
+});
 
 // Service status management
 function updateServiceStatus() {
