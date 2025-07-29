@@ -1,4 +1,4 @@
-# English Study Website - Layout Documentation
+# Multilingual Study Platform - Layout Documentation
 
 ## 📐 Overall Layout Structure
 
